@@ -1,0 +1,109 @@
+/* FAST corner detector algorithm implementation.
+* @file
+* @date 2018-10-16
+* @author Anonymous
+*/
+
+#include "cvlib.hpp"
+
+void nothing()
+{
+};
+namespace cvlib
+{
+	// static
+	cv::Ptr<corner_detector_fast> corner_detector_fast::create()
+	{
+		return cv::makePtr<corner_detector_fast>();
+	}
+
+	void corner_detector_fast::setThreshold(int threshold)
+	{
+		_threshold = threshold;
+	}
+
+	bool corner_detector_fast::check(cv::Point point, int num_compare)
+	{
+		int counter = 0;
+		_out = false;
+		int ref_counter = num_compare == 6 ? 3 : 12;
+		std::vector<cv::Point> pos;
+		pos = num_compare == 6 ? pos4 : pos16;
+		for (int i = 0; i < num_compare; ++i)
+			if ((_im.at<uchar>(point + pos[i % pos.size()]) - _im.at<uchar>(point)) > _threshold)
+			{
+				counter++;
+				_out = counter > ref_counter ? true : false;
+				if (_out)
+					break;
+			}
+			else
+			{
+				counter = 0;
+			}
+		return _out;
+	}
+
+	bool corner_detector_fast::check1(cv::Point point, int num_compare)
+	{
+		int counter = 0;
+		_out = false;
+		int ref_counter = num_compare == 6 ? 3 : 12;
+		std::vector<cv::Point> pos;
+		pos = num_compare == 6 ? pos4 : pos16;
+		for (int i = 0; i < num_compare; ++i)
+			if ((_im.at<uchar>(point) - _im.at<uchar>(point + pos[i % pos.size()])) > _threshold)
+			{
+				counter++;
+				_out = counter > ref_counter ? true : false;
+				if (_out)
+					break;
+			}
+			else
+			{
+				counter = 0;
+			}
+		return _out;
+	}
+
+	void corner_detector_fast::detect(cv::InputArray image, CV_OUT std::vector<cv::KeyPoint>& keypoints, cv::InputArray /*mask = cv::noArray()*/)
+	{
+		keypoints.clear();
+		image.type() == CV_8UC1 ? image.copyTo(_im) : cv::cvtColor(image, _im, cv::COLOR_BGR2GRAY);
+		for (int i = 3; i < _im.cols - 3; ++i)
+			for (int j = 3; j < _im.rows - 3; ++j)
+			{
+				check(cv::Point(i, j), 6) ? (check(cv::Point(i, j), 27) ? keypoints.push_back(cv::KeyPoint((float)i, (float)j, 1.0f)) : nothing()) : nothing();
+				if (!_out)
+					check1(cv::Point(i, j), 6) ? (check1(cv::Point(i, j), 27) ? keypoints.push_back(cv::KeyPoint((float)i, (float)j, 1.0f)) : nothing()) : nothing();
+			}
+	}
+
+	void corner_detector_fast::compute(cv::InputArray image, std::vector<cv::KeyPoint>& keypoints, cv::OutputArray descriptors)
+	{
+		image.type() == CV_8UC1 ? image.copyTo(_im) : cv::cvtColor(image, _im, cv::COLOR_BGR2GRAY);
+		std::vector<cv::Point2f> compare_p = {{ -3, -3 },{ -3, 0 },{ -3, 3 },{ 0, -3 },{ 0, 3 },{ 3, -3 },{ 3, 0 },{ 3, 3 }};
+
+		const int desc_length = compare_p.size();
+		descriptors.create(static_cast<int>(keypoints.size()), desc_length, CV_8U);
+		auto desc_mat = descriptors.getMat();
+		desc_mat.setTo(0);
+
+		uint8_t* ptr = reinterpret_cast<uint8_t*>(desc_mat.ptr());
+		for (const auto& pt : keypoints)
+		{
+			for (int i = 0; i < desc_length; ++i)
+			{
+				cv::Point2f cmp_point = pt.pt + compare_p[i];
+				*ptr = _im.at<uint8_t>(pt.pt) < _im.at<uint8_t>(cmp_point);
+				++ptr;
+			}
+		}
+	}
+
+	void corner_detector_fast::detectAndCompute(cv::InputArray image, cv::InputArray, std::vector<cv::KeyPoint>& keypoints, cv::OutputArray descriptors, bool /*= false*/)
+	{
+		detect(image, keypoints);
+		compute(image, keypoints, descriptors);
+	}
+} // namespace cvlib
